@@ -106,34 +106,7 @@ print_file_buffer()
     printf(" }\n");
 }
 
-#if 0
-int main() 
-{
-    add_character('t');
-    add_character('o');
-    add_character('m');
-    add_character('i');
-    print_file_buffer();
-
-    move_cursor_left();
-    move_cursor_left();
-    add_character('9');
-    add_character('7');
-    print_file_buffer();
-    
-    remove_character();
-    print_file_buffer();
-
-    remove_character();
-    print_file_buffer();
-    
-    file_buffer[last_index] = '\0';
-    
-    printf("array size: %d\n", array_count(file_buffer));
-
-    return 0;
-}
-#endif
+// ================== Start Win32 Code ========================
 
 // TODO(tomi): Do something with this globals
 global_varible int bytes_per_pixel = 4;
@@ -150,6 +123,8 @@ typedef struct
     int bytes_per_pixel;
     void* buffer;
 } Win32_Bitmap;
+
+global_varible Win32_Bitmap win32_letters[256];
 
 internal void
 win32_resize_backbuffer(int width, int height)
@@ -181,42 +156,6 @@ win32_update_backbuffer(HDC device_context, int width, int height)
                   0, 0, backbuffer_width, backbuffer_height,
                   win32_backbuffer, &win32_bitmapinfo, 
                   DIB_RGB_COLORS, SRCCOPY);
-}
-
-LRESULT CALLBACK 
-win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
-{
-    LRESULT result = 0;
-    switch(message)
-    {
-        case WM_SIZE: 
-        {
-            RECT client_rect;
-            GetClientRect(window, &client_rect);
-            int width = client_rect.right - client_rect.left;
-            int height = client_rect.bottom - client_rect.top;
-            win32_resize_backbuffer(width, height);
-        }break;
-        case WM_PAINT:
-        {
-            PAINTSTRUCT paint = {0};
-            HDC device_context = BeginPaint(window, &paint);
-            int width = paint.rcPaint.right - paint.rcPaint.left;
-            int height = paint.rcPaint.bottom - paint.rcPaint.top;
-            win32_update_backbuffer(device_context, width, height);
-            EndPaint(window, &paint);
-        }break;
-        case WM_CLOSE:
-        {
-            OutputDebugString("Close Message!\n");
-            PostQuitMessage(0);
-        }break;
-        default: 
-        {
-            result = DefWindowProc(window, message, w_param, l_param);
-        }break;
-    }
-    return result;
 }
 
 internal void
@@ -276,6 +215,74 @@ win32_create_letter_bitmap(HDC device_context, const char *letter)
     return font_bitmap;
 }
 
+internal void win32_load_complete_font(HDC device_context)
+{
+    for(int i = 0; i < 127; ++i)
+    {
+        win32_letters[i] = win32_create_letter_bitmap(device_context, &((char)i));
+    }
+}
+
+internal void
+win32_draw_file_buffer()
+{
+    int height = 0;
+    int total_w = 0;
+    for(int i = 0; i < last_index; ++i)
+    {
+        char c = file_buffer[i];
+        if(c == '\n')
+        {
+            height += 20;
+            total_w = 0;
+        }
+        else
+        {
+            printf("%c, ", c);
+            win32_draw_bitmap(win32_letters[c], total_w, height);
+            total_w += win32_letters[c].width;
+        }
+
+    }
+}
+
+LRESULT CALLBACK 
+win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
+{
+    LRESULT result = 0;
+    switch(message)
+    {
+        case WM_SIZE: 
+        {
+            RECT client_rect;
+            GetClientRect(window, &client_rect);
+            int width = client_rect.right - client_rect.left;
+            int height = client_rect.bottom - client_rect.top;
+            win32_resize_backbuffer(width, height);
+        }break;
+        case WM_PAINT:
+        {
+            PAINTSTRUCT paint = {0};
+            HDC device_context = BeginPaint(window, &paint);
+            int width = paint.rcPaint.right - paint.rcPaint.left;
+            int height = paint.rcPaint.bottom - paint.rcPaint.top;
+            win32_draw_file_buffer();
+            win32_update_backbuffer(device_context, width, height);
+            EndPaint(window, &paint);
+        }break;
+        case WM_CLOSE:
+        {
+            OutputDebugString("Close Message!\n");
+            PostQuitMessage(0);
+        }break;
+        default: 
+        {
+            result = DefWindowProc(window, message, w_param, l_param);
+        }break;
+    }
+    return result;
+}
+
 int WINAPI 
 wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_show)
 {
@@ -297,30 +304,39 @@ wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_sh
         if(window)
         {
             HDC device_context = GetDC(window);
+            // TODO(tomi): Increase speed of font loading
+            win32_load_complete_font(device_context);
             
-            // Win32 Text rendering test
-            Win32_Bitmap t_bitmap = win32_create_letter_bitmap(device_context, "T");
-            Win32_Bitmap o_bitmap = win32_create_letter_bitmap(device_context, "O");
-            Win32_Bitmap m_bitmap = win32_create_letter_bitmap(device_context, "M");
-            Win32_Bitmap a_bitmap = win32_create_letter_bitmap(device_context, "A");
-            Win32_Bitmap s_bitmap = win32_create_letter_bitmap(device_context, "S");
-            Win32_Bitmap dot_bitmap = win32_create_letter_bitmap(device_context, ".");
-            Win32_Bitmap c_bitmap = win32_create_letter_bitmap(device_context, "C");
-            
-            int total_w = 0;
-            win32_draw_bitmap(t_bitmap, total_w, 0);
-            total_w += t_bitmap.width;
-            win32_draw_bitmap(o_bitmap, total_w, 0);
-            total_w += o_bitmap.width;
-            win32_draw_bitmap(m_bitmap, total_w, 0);
-            total_w += m_bitmap.width;
-            win32_draw_bitmap(a_bitmap, total_w, 0);
-            total_w += a_bitmap.width;
-            win32_draw_bitmap(s_bitmap, total_w, 0);
-            total_w += s_bitmap.width;
-            win32_draw_bitmap(dot_bitmap, total_w, 0);
-            total_w += dot_bitmap.width;
-            win32_draw_bitmap(c_bitmap, total_w, 0);
+            add_character('T');
+            add_character('o');
+            add_character('m');
+            add_character('i');
+            add_character(' ');
+            add_character('C');
+            add_character('a');
+            add_character('b');
+            add_character('r');
+            add_character('e');
+            add_character('r');
+            add_character('i');
+            add_character('z');
+            add_character('o');
+            add_character('\n');
+            add_character('M');
+            add_character('a');
+            add_character('n');
+            add_character('u');
+            add_character(' ');
+            add_character('C');
+            add_character('a');
+            add_character('b');
+            add_character('r');
+            add_character('e');
+            add_character('r');
+            add_character('i');
+            add_character('z');
+            add_character('o');
+            add_character('\n');
 
             // TODO(tomi): Study best way of creating a message loop
             // for a text editor
