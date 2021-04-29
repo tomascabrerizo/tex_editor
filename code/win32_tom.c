@@ -142,6 +142,15 @@ global_varible BITMAPINFO win32_bitmapinfo;
 global_varible int backbuffer_width;
 global_varible int backbuffer_height;
 
+typedef struct
+{
+    int width;
+    int height;
+    int pitch;
+    int bytes_per_pixel;
+    void* buffer;
+} Win32_Bitmap;
+
 internal void
 win32_resize_backbuffer(int width, int height)
 {
@@ -210,6 +219,63 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
     return result;
 }
 
+internal void
+win32_draw_bitmap(Win32_Bitmap bitmap, int x, int y)
+{
+    int pitch = (backbuffer_width * bytes_per_pixel);
+    u8 *des_row = (u8 *)win32_backbuffer + (pitch*y);
+    u8 *src_row = (u8 *)bitmap.buffer;
+    for(int y = 0; y < bitmap.height; ++y)
+    {
+        u32 *des_pixel = (u32 *)des_row + x;
+        u32 *src_pixel = (u32 *)src_row;
+        for(int x = 0; x < bitmap.width; ++x)
+        {
+            *des_pixel++ = *src_pixel++;
+        }
+        des_row += pitch;
+        src_row += bitmap.pitch;
+    }
+}
+
+internal Win32_Bitmap 
+win32_create_letter_bitmap(HDC device_context, const char *letter)
+{
+    HBITMAP win32_bitmap = CreateCompatibleBitmap(device_context, 1024, 1024);
+    SelectObject(device_context, win32_bitmap);
+    BOOL result = TextOutA(device_context, 0, 0, letter, 1);
+    TEXTMETRIC font_metric;
+    GetTextMetrics(device_context, &font_metric);
+    SIZE font_size;
+    GetTextExtentPoint32A(device_context, letter, 1, &font_size);
+    
+    Win32_Bitmap font_bitmap = {0};
+    font_bitmap.width = font_size.cx;
+    font_bitmap.height = font_size.cy;
+    font_bitmap.bytes_per_pixel = 4;
+    font_bitmap.pitch = font_bitmap.bytes_per_pixel * font_bitmap.width;
+    font_bitmap.buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                   font_bitmap.pitch*font_bitmap.height);
+
+    u8 *row = (u8 *)font_bitmap.buffer;
+    for(int y = 0; y < font_bitmap.height; ++y)
+    {
+        u32 *pixel = (u32 *)row;
+        for(int x = 0; x < font_bitmap.width; ++x)
+        {
+            u8 font_pixel = (u8)GetPixel(device_context, x, y);
+            u8 inv_font_pixel = 255 - font_pixel;
+            *pixel = (255 << 24) | (inv_font_pixel << 16) | 
+                     (inv_font_pixel << 8) | (inv_font_pixel << 0);
+            pixel++;
+        }
+        row += font_bitmap.pitch;
+    }
+    DeleteObject(win32_bitmap);    
+
+    return font_bitmap;
+}
+
 int WINAPI 
 wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_show)
 {
@@ -230,6 +296,32 @@ wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_sh
                                      0, 0, instance, 0);
         if(window)
         {
+            HDC device_context = GetDC(window);
+            
+            // Win32 Text rendering test
+            Win32_Bitmap t_bitmap = win32_create_letter_bitmap(device_context, "T");
+            Win32_Bitmap o_bitmap = win32_create_letter_bitmap(device_context, "O");
+            Win32_Bitmap m_bitmap = win32_create_letter_bitmap(device_context, "M");
+            Win32_Bitmap a_bitmap = win32_create_letter_bitmap(device_context, "A");
+            Win32_Bitmap s_bitmap = win32_create_letter_bitmap(device_context, "S");
+            Win32_Bitmap dot_bitmap = win32_create_letter_bitmap(device_context, ".");
+            Win32_Bitmap c_bitmap = win32_create_letter_bitmap(device_context, "C");
+            
+            int total_w = 0;
+            win32_draw_bitmap(t_bitmap, total_w, 0);
+            total_w += t_bitmap.width;
+            win32_draw_bitmap(o_bitmap, total_w, 0);
+            total_w += o_bitmap.width;
+            win32_draw_bitmap(m_bitmap, total_w, 0);
+            total_w += m_bitmap.width;
+            win32_draw_bitmap(a_bitmap, total_w, 0);
+            total_w += a_bitmap.width;
+            win32_draw_bitmap(s_bitmap, total_w, 0);
+            total_w += s_bitmap.width;
+            win32_draw_bitmap(dot_bitmap, total_w, 0);
+            total_w += dot_bitmap.width;
+            win32_draw_bitmap(c_bitmap, total_w, 0);
+
             // TODO(tomi): Study best way of creating a message loop
             // for a text editor
             MSG message;
@@ -246,6 +338,7 @@ wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_sh
                     break;
                 }
             }
+
         }
         else
         {
