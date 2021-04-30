@@ -21,11 +21,24 @@ typedef double r64;
 #define internal static
 #define global_varible static
 
+// TODO(tomi): Clean up this code plissss!
+
 // TODO(tomi): Define DEBUG compiler flag
 #define assert(condition) if(!(condition)) {*(u32*)0 = 0;}
 #define array_count(array) ((int)sizeof(array)/(int)sizeof(array[0]))
 
 #define FILE_SIZE (10 * 1024)
+
+typedef struct
+{
+    int width;
+    int height;
+    int pitch;
+    int bytes_per_pixel;
+    void* buffer;
+} Win32_Bitmap;
+
+global_varible Win32_Bitmap win32_letters[256];
 
 // TODO(tomi): This should be a pointer or and index on the array
 // for now because the array is fixed size i'll use index
@@ -33,6 +46,10 @@ typedef double r64;
 global_varible u32 cursor_index; 
 global_varible u32 last_index;
 global_varible char file_buffer[FILE_SIZE];
+global_varible int number_of_lines;
+global_varible int line_width[256];
+global_varible int cursor_current_pos_x;
+global_varible int cursor_current_pos_y;
 
 internal void
 move_cursor_left()
@@ -65,16 +82,40 @@ add_character(char character)
     file_buffer[cursor_index] = character;
     cursor_index++;
     last_index++;
+
+    if(character == '\n')
+    {
+        line_width[number_of_lines] = cursor_current_pos_x;
+        number_of_lines++;
+        cursor_current_pos_y += 20;
+        cursor_current_pos_x = 0;
+    }
+    else
+    {
+        cursor_current_pos_x += win32_letters[character].width;
+    }
 }
 
 internal void
 remove_character()
 {
-    if(cursor_index >= 1)
+    if(cursor_index > 0)
     {
         char *src_buffer = &file_buffer[cursor_index];
         char *des_buffer = (src_buffer - 1);
         int count = last_index - cursor_index;
+        
+        if(*des_buffer == '\n')
+        {
+            number_of_lines--;
+            cursor_current_pos_x = line_width[number_of_lines];
+            cursor_current_pos_y -= 20;
+        }
+        else
+        {
+            cursor_current_pos_x -= win32_letters[*des_buffer].width;
+        }
+
         // TODO(tomi): Use MoveMemory in win32 
         if(count > 0) memmove(des_buffer, src_buffer, count);
         cursor_index--;
@@ -115,17 +156,6 @@ global_varible BITMAPINFO win32_bitmapinfo;
 global_varible int backbuffer_width;
 global_varible int backbuffer_height;
 
-typedef struct
-{
-    int width;
-    int height;
-    int pitch;
-    int bytes_per_pixel;
-    void* buffer;
-} Win32_Bitmap;
-
-global_varible Win32_Bitmap win32_letters[256];
-
 internal void
 win32_resize_backbuffer(int width, int height)
 {
@@ -159,6 +189,13 @@ win32_update_backbuffer(HDC device_context, int width, int height)
 }
 
 internal void
+win32_clear_backbuffer(int width, int height)
+{
+    int backbuffer_size = (width * height) * bytes_per_pixel;
+    ZeroMemory(win32_backbuffer, backbuffer_size);
+}
+
+internal void
 win32_draw_bitmap(Win32_Bitmap bitmap, int x, int y)
 {
     int pitch = (backbuffer_width * bytes_per_pixel);
@@ -175,6 +212,22 @@ win32_draw_bitmap(Win32_Bitmap bitmap, int x, int y)
         des_row += pitch;
         src_row += bitmap.pitch;
     }
+}
+
+internal void
+win32_draw_rect(int x, int y, int width, int height, u32 color)
+{
+    int pitch = (backbuffer_width * bytes_per_pixel);
+    u8 *des_row = (u8 *)win32_backbuffer + (pitch*y);
+    for(int y = 0; y < height; ++y)
+    {
+        u32 *des_pixel = (u32 *)des_row + x;
+        for(int x = 0; x < width; ++x)
+        {
+            *des_pixel++ = color;
+        }
+        des_row += pitch;
+    } 
 }
 
 internal Win32_Bitmap 
@@ -195,7 +248,7 @@ win32_create_letter_bitmap(HDC device_context, const char *letter)
     font_bitmap.pitch = font_bitmap.bytes_per_pixel * font_bitmap.width;
     font_bitmap.buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
                                    font_bitmap.pitch*font_bitmap.height);
-
+    
     u8 *row = (u8 *)font_bitmap.buffer;
     for(int y = 0; y < font_bitmap.height; ++y)
     {
@@ -246,6 +299,12 @@ win32_draw_file_buffer()
     }
 }
 
+internal void
+win32_draw_cursor()
+{
+    win32_draw_rect(cursor_current_pos_x, cursor_current_pos_y, 6, 20, 0xFF00FF00);
+}
+
 LRESULT CALLBACK 
 win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
 {
@@ -266,7 +325,9 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
             HDC device_context = BeginPaint(window, &paint);
             int width = paint.rcPaint.right - paint.rcPaint.left;
             int height = paint.rcPaint.bottom - paint.rcPaint.top;
+            win32_clear_backbuffer(width, height);
             win32_draw_file_buffer();
+            win32_draw_cursor();
             win32_update_backbuffer(device_context, width, height);
             EndPaint(window, &paint);
         }break;
@@ -274,6 +335,41 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
         {
             OutputDebugString("Close Message!\n");
             PostQuitMessage(0);
+        }break;
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            u32 keycode = w_param;
+            bool was_down = ((l_param & (1 << 30)) != 0);
+            bool is_down = ((l_param & (1 << 31)) == 0);
+            
+            if(is_down)
+            {
+                RECT client_rect;
+                GetClientRect(window, &client_rect);
+                int width = client_rect.right - client_rect.left;
+                int height = client_rect.bottom - client_rect.top;
+                HDC device_context = GetDC(window);
+                // TODO(tomi): Finish to add all keys and keys modifiables
+                if(keycode == VK_BACK)
+                {
+                    remove_character();
+                }
+                else if(keycode == VK_RETURN)
+                {
+                    add_character('\n');
+                }
+                else
+                {
+                    add_character(keycode);
+                }
+                win32_clear_backbuffer(width, height);
+                win32_draw_file_buffer();
+                win32_draw_cursor();
+                win32_update_backbuffer(device_context, width, height);
+            }
         }break;
         default: 
         {
@@ -306,37 +402,6 @@ wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_sh
             HDC device_context = GetDC(window);
             // TODO(tomi): Increase speed of font loading
             win32_load_complete_font(device_context);
-            
-            add_character('T');
-            add_character('o');
-            add_character('m');
-            add_character('i');
-            add_character(' ');
-            add_character('C');
-            add_character('a');
-            add_character('b');
-            add_character('r');
-            add_character('e');
-            add_character('r');
-            add_character('i');
-            add_character('z');
-            add_character('o');
-            add_character('\n');
-            add_character('M');
-            add_character('a');
-            add_character('n');
-            add_character('u');
-            add_character(' ');
-            add_character('C');
-            add_character('a');
-            add_character('b');
-            add_character('r');
-            add_character('e');
-            add_character('r');
-            add_character('i');
-            add_character('z');
-            add_character('o');
-            add_character('\n');
 
             // TODO(tomi): Study best way of creating a message loop
             // for a text editor
