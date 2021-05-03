@@ -5,136 +5,99 @@
 #include <stdbool.h>
 #include <memory.h>
 
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
+#include "win32_editor.h"
 
-typedef int8_t s8;
-typedef int16_t s16;
-typedef int32_t s32;
-typedef int64_t s64;
-
-typedef float r32;
-typedef double r64;
-
-#define internal static
-#define global_varible static
-
-// TODO(tomi): Clean up this code plissss!
-
-// TODO(tomi): Define DEBUG compiler flag
-#define assert(condition) if(!(condition)) {*(u32*)0 = 0;}
-#define array_count(array) ((int)sizeof(array)/(int)sizeof(array[0]))
-
-#define FILE_SIZE (10 * 1024)
-
-typedef struct
-{
-    int width;
-    int height;
-    int pitch;
-    int bytes_per_pixel;
-    void* buffer;
-} Win32_Bitmap;
-
-global_varible Win32_Bitmap win32_letters[256];
-
-// TODO(tomi): This should be a pointer or and index on the array
-// for now because the array is fixed size i'll use index
 // TODO(tomi): Do something with this globals
-global_varible u32 cursor_index; 
-global_varible u32 last_index;
-global_varible char file_buffer[FILE_SIZE];
-global_varible int number_of_lines;
-global_varible int line_width[256];
-global_varible int cursor_current_pos_x;
-global_varible int cursor_current_pos_y;
+global_varible Win32_Backbuffer global_backbuffer;
+global_varible File global_file;
+global_varible Cursor global_cursor;
 
 internal void
-move_cursor_left()
+move_cursor_left(Cursor *cursor)
 {
-    if(cursor_index <= 0) return;
-    cursor_index--;
+    if(cursor->index <= 0) return;
+    cursor->index--;
 }
 
 internal void
-move_cursor_right()
+move_cursor_right(Cursor *cursor)
 {
-    if(cursor_index >= FILE_SIZE) return;
-    cursor_index++;
+    if(cursor->index >= FILE_SIZE) return;
+    cursor->index++;
 }
 
 internal void
-add_character(char character)
+add_character(File *file, Cursor *cursor, char character)
 {
-    assert(cursor_index < FILE_SIZE);
-    assert(last_index < FILE_SIZE);
+    assert(cursor->index < FILE_SIZE);
+    assert(cursor->last_index < FILE_SIZE);
     
-    if(cursor_index <= last_index)
+    if(cursor->index <= cursor->last_index)
     {
-        char *src_buffer = &file_buffer[cursor_index];
+        char *src_buffer = &file->memory[cursor->index];
         char *des_buffer = (src_buffer + 1);
-        int count = last_index - cursor_index;
+        int count = cursor->last_index - cursor->index;
         // TODO(tomi): Use MoveMemory in win32 
         if(count > 0) memmove(des_buffer, src_buffer, count);
     }
-    file_buffer[cursor_index] = character;
-    cursor_index++;
-    last_index++;
-
+    file->memory[cursor->index] = character;
+    cursor->index++;
+    cursor->last_index++;
+    
+    // TODO(tomi): Maybe separate the logic from the render code
+    // this get the width of the cursor into the screen
     if(character == '\n')
     {
-        line_width[number_of_lines] = cursor_current_pos_x;
-        number_of_lines++;
-        cursor_current_pos_y += 20;
-        cursor_current_pos_x = 0;
+        file->line_width[file->number_of_lines] = cursor->pos_x;
+        file->number_of_lines++;
+        cursor->pos_y += 20;
+        cursor->pos_x = 0;
     }
     else
     {
-        cursor_current_pos_x += win32_letters[character].width;
+        cursor->pos_x += win32_letters[character].width;
     }
 }
 
 internal void
-remove_character()
+remove_character(File *file, Cursor *cursor)
 {
-    if(cursor_index > 0)
+    if(cursor->index > 0)
     {
-        char *src_buffer = &file_buffer[cursor_index];
+        char *src_buffer = &file->memory[cursor->index];
         char *des_buffer = (src_buffer - 1);
-        int count = last_index - cursor_index;
+        int count = cursor->last_index - cursor->index;
         
         if(*des_buffer == '\n')
         {
-            number_of_lines--;
-            cursor_current_pos_x = line_width[number_of_lines];
-            cursor_current_pos_y -= 20;
+            file->number_of_lines--;
+            cursor->pos_x = file->line_width[file->number_of_lines];
+            cursor->pos_y -= 20;
         }
         else
         {
-            cursor_current_pos_x -= win32_letters[*des_buffer].width;
+            cursor->pos_x -= win32_letters[*des_buffer].width;
         }
 
         // TODO(tomi): Use MoveMemory in win32 
         if(count > 0) memmove(des_buffer, src_buffer, count);
-        cursor_index--;
-        last_index--;
+        cursor->index--;
+        cursor->last_index--;
     }
 }
 
 internal void
-print_file_buffer()
+print_file_buffer(File *file, Cursor* cursor)
 {
     printf("{ ");
-    for(int i = 0; i < last_index; ++i)
+    for(int i = 0; i < cursor->last_index; ++i)
     {
-        char c = file_buffer[i];
+        char c = file->memory[i];
         if(c == '\n')
         {
             printf("\n");
         }
-        else if(i == cursor_index)
+        else if(i == cursor->index)
         {
             printf("*%c, ", c);
         }
@@ -149,58 +112,52 @@ print_file_buffer()
 
 // ================== Start Win32 Code ========================
 
-// TODO(tomi): Do something with this globals
-global_varible int bytes_per_pixel = 4;
-global_varible void* win32_backbuffer;
-global_varible BITMAPINFO win32_bitmapinfo;
-global_varible int backbuffer_width;
-global_varible int backbuffer_height;
-
 internal void
-win32_resize_backbuffer(int width, int height)
+win32_resize_backbuffer(Win32_Backbuffer *buffer, int width, int height)
 {
-    if(win32_backbuffer)
+    if(buffer->memory)
     {
-        VirtualFree(win32_backbuffer, 0, MEM_RELEASE);
+        VirtualFree(buffer->memory, 0, MEM_RELEASE);
     }
 
-    backbuffer_width = width;
-    backbuffer_height = height;
+    buffer->width = width;
+    buffer->height = height;
+    buffer->bytes_per_pixel = 4;
     
-    win32_bitmapinfo.bmiHeader.biSize = sizeof(win32_bitmapinfo.bmiHeader);
-    win32_bitmapinfo.bmiHeader.biWidth = width;
-    win32_bitmapinfo.bmiHeader.biHeight = -height;
-    win32_bitmapinfo.bmiHeader.biPlanes = 1;
-    win32_bitmapinfo.bmiHeader.biBitCount = 32;
-    win32_bitmapinfo.bmiHeader.biCompression = BI_RGB;
+    buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
+    buffer->info.bmiHeader.biWidth = width;
+    buffer->info.bmiHeader.biHeight = -height;
+    buffer->info.bmiHeader.biPlanes = 1;
+    buffer->info.bmiHeader.biBitCount = 32;
+    buffer->info.bmiHeader.biCompression = BI_RGB;
 
-    SIZE_T backbuffer_size = (width*height)*bytes_per_pixel;
-    win32_backbuffer = VirtualAlloc(0, backbuffer_size, MEM_COMMIT, PAGE_READWRITE); 
+    SIZE_T backbuffer_size = (buffer->width*buffer->height)*buffer->bytes_per_pixel;
+    buffer->memory = VirtualAlloc(0, backbuffer_size, MEM_COMMIT, PAGE_READWRITE); 
 }
 
 internal void
-win32_update_backbuffer(HDC device_context, int width, int height)
+win32_update_backbuffer(Win32_Backbuffer *buffer, HDC device_context, int width, int height)
 {
     StretchDIBits(device_context,
                   0, 0, width, height,
-                  0, 0, backbuffer_width, backbuffer_height,
-                  win32_backbuffer, &win32_bitmapinfo, 
+                  0, 0, buffer->width, buffer->height,
+                  buffer->memory, &buffer->info, 
                   DIB_RGB_COLORS, SRCCOPY);
 }
 
 internal void
-win32_clear_backbuffer(int width, int height)
+win32_clear_backbuffer(Win32_Backbuffer *buffer)
 {
-    int backbuffer_size = (width * height) * bytes_per_pixel;
-    ZeroMemory(win32_backbuffer, backbuffer_size);
+    int backbuffer_size = (buffer->width * buffer->height) * buffer->bytes_per_pixel;
+    ZeroMemory(buffer->memory, backbuffer_size);
 }
 
 internal void
-win32_draw_bitmap(Win32_Bitmap bitmap, int x, int y)
+win32_draw_bitmap(Win32_Backbuffer *buffer, Win32_Bitmap bitmap, int x, int y)
 {
-    int pitch = (backbuffer_width * bytes_per_pixel);
-    u8 *des_row = (u8 *)win32_backbuffer + (pitch*y);
-    u8 *src_row = (u8 *)bitmap.buffer;
+    int pitch = (buffer->width * buffer->bytes_per_pixel);
+    u8 *des_row = (u8 *)buffer->memory + (pitch*y);
+    u8 *src_row = (u8 *)bitmap.memory;
     for(int y = 0; y < bitmap.height; ++y)
     {
         u32 *des_pixel = (u32 *)des_row + x;
@@ -215,10 +172,10 @@ win32_draw_bitmap(Win32_Bitmap bitmap, int x, int y)
 }
 
 internal void
-win32_draw_rect(int x, int y, int width, int height, u32 color)
+win32_draw_rect(Win32_Backbuffer *buffer, int x, int y, int width, int height, u32 color)
 {
-    int pitch = (backbuffer_width * bytes_per_pixel);
-    u8 *des_row = (u8 *)win32_backbuffer + (pitch*y);
+    int pitch = (buffer->width * buffer->bytes_per_pixel);
+    u8 *des_row = (u8 *)buffer->memory + (pitch*y);
     for(int y = 0; y < height; ++y)
     {
         u32 *des_pixel = (u32 *)des_row + x;
@@ -246,10 +203,10 @@ win32_create_letter_bitmap(HDC device_context, const char *letter)
     font_bitmap.height = font_size.cy;
     font_bitmap.bytes_per_pixel = 4;
     font_bitmap.pitch = font_bitmap.bytes_per_pixel * font_bitmap.width;
-    font_bitmap.buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+    font_bitmap.memory = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
                                    font_bitmap.pitch*font_bitmap.height);
     
-    u8 *row = (u8 *)font_bitmap.buffer;
+    u8 *row = (u8 *)font_bitmap.memory;
     for(int y = 0; y < font_bitmap.height; ++y)
     {
         u32 *pixel = (u32 *)row;
@@ -277,13 +234,13 @@ internal void win32_load_complete_font(HDC device_context)
 }
 
 internal void
-win32_draw_file_buffer()
+win32_draw_file_buffer(Win32_Backbuffer *buffer, File *file, Cursor* cursor)
 {
     int height = 0;
     int total_w = 0;
-    for(int i = 0; i < last_index; ++i)
+    for(int i = 0; i < cursor->last_index; ++i)
     {
-        char c = file_buffer[i];
+        char c = file->memory[i];
         if(c == '\n')
         {
             height += 20;
@@ -292,7 +249,7 @@ win32_draw_file_buffer()
         else
         {
             printf("%c, ", c);
-            win32_draw_bitmap(win32_letters[c], total_w, height);
+            win32_draw_bitmap(buffer, win32_letters[c], total_w, height);
             total_w += win32_letters[c].width;
         }
 
@@ -300,9 +257,9 @@ win32_draw_file_buffer()
 }
 
 internal void
-win32_draw_cursor()
+win32_draw_cursor(Win32_Backbuffer *buffer, Cursor *cursor)
 {
-    win32_draw_rect(cursor_current_pos_x, cursor_current_pos_y, 6, 20, 0xFF00FF00);
+    win32_draw_rect(buffer, cursor->pos_x, cursor->pos_y, 6, 20, 0xFF00FF00);
 }
 
 LRESULT CALLBACK 
@@ -317,7 +274,7 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
             GetClientRect(window, &client_rect);
             int width = client_rect.right - client_rect.left;
             int height = client_rect.bottom - client_rect.top;
-            win32_resize_backbuffer(width, height);
+            win32_resize_backbuffer(&global_backbuffer, width, height);
         }break;
         case WM_PAINT:
         {
@@ -325,10 +282,10 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
             HDC device_context = BeginPaint(window, &paint);
             int width = paint.rcPaint.right - paint.rcPaint.left;
             int height = paint.rcPaint.bottom - paint.rcPaint.top;
-            win32_clear_backbuffer(width, height);
-            win32_draw_file_buffer();
-            win32_draw_cursor();
-            win32_update_backbuffer(device_context, width, height);
+            win32_clear_backbuffer(&global_backbuffer);
+            win32_draw_file_buffer(&global_backbuffer, &global_file, &global_cursor);
+            win32_draw_cursor(&global_backbuffer, &global_cursor);
+            win32_update_backbuffer(&global_backbuffer, device_context, width, height);
             EndPaint(window, &paint);
         }break;
         case WM_CLOSE:
@@ -355,20 +312,20 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
                 // TODO(tomi): Finish to add all keys and keys modifiables
                 if(keycode == VK_BACK)
                 {
-                    remove_character();
+                    remove_character(&global_file, &global_cursor);
                 }
                 else if(keycode == VK_RETURN)
                 {
-                    add_character('\n');
+                    add_character(&global_file, &global_cursor, '\n');
                 }
                 else
                 {
-                    add_character(keycode);
+                    add_character(&global_file, &global_cursor, keycode);
                 }
-                win32_clear_backbuffer(width, height);
-                win32_draw_file_buffer();
-                win32_draw_cursor();
-                win32_update_backbuffer(device_context, width, height);
+                win32_clear_backbuffer(&global_backbuffer);
+                win32_draw_file_buffer(&global_backbuffer, &global_file, &global_cursor);
+                win32_draw_cursor(&global_backbuffer, &global_cursor);
+                win32_update_backbuffer(&global_backbuffer, device_context, width, height);
             }
         }break;
         default: 
