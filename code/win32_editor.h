@@ -19,8 +19,6 @@ typedef double r64;
 #define internal static
 #define global_varible static
 
-// TODO(tomi): Clean up this code plissss!
-
 // TODO(tomi): Define DEBUG compiler flag
 #define assert(condition) if(!(condition)) {*(u32*)0 = 0;}
 #define array_count(array) ((int)sizeof(array)/(int)sizeof(array[0]))
@@ -29,12 +27,10 @@ typedef struct
 {
     int width;
     int height;
-    int pitch;
     int bytes_per_pixel;
+    int pitch;
     void* memory;
-} Win32_Bitmap;
-
-global_varible Win32_Bitmap win32_letters[256];
+} Bitmap;
 
 // TODO(tomi): This should be a pointer or and index on the array
 // for now because the array is fixed size i'll use index
@@ -63,8 +59,6 @@ typedef struct
     int height;
     int bytes_per_pixel;
     void* memory;
-
 } Win32_Backbuffer;
-
 
 #endif //WIN32_EDITOR_H
