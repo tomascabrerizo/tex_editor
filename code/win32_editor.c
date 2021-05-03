@@ -1,115 +1,16 @@
-#include <Windows.h>
-
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <memory.h>
 
+#include "editor.h"
+#include "editor.c"
+
+#include <Windows.h>
 #include "win32_editor.h"
 
 // TODO(tomi): Do something with this globals
-global_varible File global_file;
-global_varible Cursor global_cursor;
-global_varible Bitmap letters[256];
-global_varible Bitmap test_bitmap;
-
 global_varible Win32_Backbuffer global_backbuffer;
-
-internal void
-move_cursor_left(Cursor *cursor)
-{
-    if(cursor->index <= 0) return;
-    cursor->index--;
-}
-
-internal void
-move_cursor_right(Cursor *cursor)
-{
-    if(cursor->index >= FILE_SIZE) return;
-    cursor->index++;
-}
-
-internal void
-add_character(File *file, Cursor *cursor, char character)
-{
-    assert(cursor->index < FILE_SIZE);
-    assert(cursor->last_index < FILE_SIZE);
-    
-    if(cursor->index <= cursor->last_index)
-    {
-        char *src_buffer = &file->memory[cursor->index];
-        char *des_buffer = (src_buffer + 1);
-        int count = cursor->last_index - cursor->index;
-        if(count > 0) memmove(des_buffer, src_buffer, count);
-    }
-    file->memory[cursor->index] = character;
-    cursor->index++;
-    cursor->last_index++;
-    
-    // TODO(tomi): Maybe separate the logic from the render code
-    // this get the width of the cursor into the screen
-    if(character == '\n')
-    {
-        file->line_width[file->number_of_lines] = cursor->pos_x;
-        file->number_of_lines++;
-        cursor->pos_y += 20;
-        cursor->pos_x = 0;
-    }
-    else
-    {
-        cursor->pos_x += letters[character].width;
-    }
-}
-
-internal void
-remove_character(File *file, Cursor *cursor)
-{
-    if(cursor->index > 0)
-    {
-        char *src_buffer = &file->memory[cursor->index];
-        char *des_buffer = (src_buffer - 1);
-        int count = cursor->last_index - cursor->index;
-        
-        if(*des_buffer == '\n')
-        {
-            file->number_of_lines--;
-            cursor->pos_x = file->line_width[file->number_of_lines];
-            cursor->pos_y -= 20;
-        }
-        else
-        {
-            cursor->pos_x -= letters[*des_buffer].width;
-        }
-
-        if(count > 0) memmove(des_buffer, src_buffer, count);
-        cursor->index--;
-        cursor->last_index--;
-    }
-}
-
-internal void
-print_file_buffer(File *file, Cursor* cursor)
-{
-    printf("{ ");
-    for(int i = 0; i < cursor->last_index; ++i)
-    {
-        char c = file->memory[i];
-        if(c == '\n')
-        {
-            printf("\n");
-        }
-        else if(i == cursor->index)
-        {
-            printf("*%c, ", c);
-        }
-        else
-        {
-            printf("%c, ", c);
-        }
-
-    }
-    printf(" }\n");
-}
 
 // ================== Start Win32 Code ========================
 
@@ -153,95 +54,6 @@ win32_clear_backbuffer(Win32_Backbuffer *buffer)
     ZeroMemory(buffer->memory, backbuffer_size);
 }
 
-internal void
-win32_draw_bitmap(Win32_Backbuffer *buffer, Bitmap bitmap, int x, int y)
-{
-    
-    int min_x = x;
-    int min_y = y;
-    int max_x = min_x + bitmap.width;
-    int max_y = min_y + bitmap.height;
-    
-    // TODO:(tomi) Finish Test bitmap clipping
-    int clip_x = 0;
-    int clip_y = 0;
-
-    if(min_x < 0)
-    {
-        clip_x = (-min_x);
-        min_x = 0;
-    }
-    if(min_y < 0)
-    {
-        clip_y = (-min_y);
-        min_y = 0;
-    }
-    if(max_x > buffer->width)
-    {
-        max_x = buffer->width;
-    }
-    if(max_y > buffer->height)
-    {
-        max_y = buffer->height;
-    }
-
-    int pitch = (buffer->width * buffer->bytes_per_pixel);
-    u8 *des_row = (u8 *)buffer->memory + (min_y*pitch); 
-    u8 *src_row = (u8 *)bitmap.memory + (clip_y * bitmap.pitch);
-    for(int dy = min_y; dy < max_y; ++dy)
-    {
-        u32 *des_pixel = (u32 *)des_row + min_x;
-        u32 *src_pixel = (u32 *)src_row + clip_x;
-        for(int dx = min_x; dx < max_x; ++dx)
-        {
-            *des_pixel++ = *src_pixel++;
-        }
-        
-        src_row += bitmap.pitch;
-        des_row += pitch;
-    }
-
-}
-
-internal void
-win32_draw_rect(Win32_Backbuffer *buffer, int x, int y, int width, int height, u32 color)
-{
-    int min_x = x;
-    int min_y = y;
-    int max_x = min_x + width;
-    int max_y = min_y + height;
-    
-    if(min_x < 0)
-    {
-        min_x = 0;
-    }
-    if(min_y < 0)
-    {
-        min_y = 0;
-    }
-    if(max_x > buffer->width)
-    {
-        max_x = buffer->width;
-    }
-    if(max_y > buffer->height)
-    {
-        max_y = buffer->height;
-    }
-
-    int pitch = (buffer->width * buffer->bytes_per_pixel);
-    u8 *des_row = (u8 *)buffer->memory + (min_y*pitch); 
-    for(int dy = min_y; dy < max_y; ++dy)
-    {
-        u32 *des_pixel = (u32 *)des_row + min_x;
-        for(int dx = min_x; dx < max_x; ++dx)
-        {
-            *des_pixel++ = color;
-        }
-        
-        des_row += pitch;
-    }
-}
-
 internal Bitmap 
 win32_create_letter_bitmap(HDC device_context, const char *letter)
 {
@@ -280,41 +92,12 @@ win32_create_letter_bitmap(HDC device_context, const char *letter)
     return font_bitmap;
 }
 
-internal void win32_load_complete_font(HDC device_context)
+internal void win32_load_complete_font(HDC device_context, Editor_State *state)
 {
     for(int i = 0; i < 127; ++i)
     {
-        letters[i] = win32_create_letter_bitmap(device_context, &((char)i));
+        state->letters[i] = win32_create_letter_bitmap(device_context, &((char)i));
     }
-}
-
-internal void
-win32_draw_file_buffer(Win32_Backbuffer *buffer, File *file, Cursor* cursor)
-{
-    int height = 0;
-    int total_w = 0;
-    for(int i = 0; i < cursor->last_index; ++i)
-    {
-        char c = file->memory[i];
-        if(c == '\n')
-        {
-            height += 20;
-            total_w = 0;
-        }
-        else
-        {
-            printf("%c, ", c);
-            win32_draw_bitmap(buffer, letters[c], total_w, height);
-            total_w += letters[c].width;
-        }
-
-    }
-}
-
-internal void
-win32_draw_cursor(Win32_Backbuffer *buffer, Cursor *cursor)
-{
-    win32_draw_rect(buffer, cursor->pos_x, cursor->pos_y, 6, 20, 0xFF00FF00);
 }
 
 LRESULT CALLBACK 
@@ -338,9 +121,14 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
             int width = paint.rcPaint.right - paint.rcPaint.left;
             int height = paint.rcPaint.bottom - paint.rcPaint.top;
             win32_clear_backbuffer(&global_backbuffer);
-            win32_draw_file_buffer(&global_backbuffer, &global_file, &global_cursor);
-            win32_draw_cursor(&global_backbuffer, &global_cursor);
-            win32_draw_bitmap(&global_backbuffer, test_bitmap, 0, 0);
+            
+            Backbuffer backbuffer = {0};
+            backbuffer.width = global_backbuffer.width;
+            backbuffer.height = global_backbuffer.height;
+            backbuffer.bytes_per_pixel = global_backbuffer.bytes_per_pixel;
+            backbuffer.memory = global_backbuffer.memory;
+            draw_editor(&backbuffer, &global_state);
+            
             win32_update_backbuffer(&global_backbuffer, device_context, width, height);
             EndPaint(window, &paint);
         }break;
@@ -357,6 +145,7 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
             u32 keycode = w_param;
             bool was_down = ((l_param & (1 << 30)) != 0);
             bool is_down = ((l_param & (1 << 31)) == 0);
+            bool is_shift = ((GetKeyState(VK_LSHIFT) >> 15) != 0);
             
             if(is_down)
             {
@@ -368,20 +157,49 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
                 // TODO(tomi): Finish to add all keys and keys modifiables
                 if(keycode == VK_BACK)
                 {
-                    remove_character(&global_file, &global_cursor);
+                    remove_character(&global_state);
+                }
+                else if(keycode == VK_SPACE)
+                {
+                    add_character(&global_state, ' ');
                 }
                 else if(keycode == VK_RETURN)
                 {
-                    add_character(&global_file, &global_cursor, '\n');
+                    add_character(&global_state, '\n');
+                }
+                else if(keycode == VK_TAB)
+                {
+                    add_character(&global_state, ' ');
+                    add_character(&global_state, ' ');
+                    add_character(&global_state, ' ');
+                    add_character(&global_state, ' ');
+                }
+                else if(keycode == VK_LEFT)
+                {
+                    move_cursor_left(&global_state);
+                }
+                else if(keycode == VK_RIGHT)
+                {
+                    move_cursor_right(&global_state);
+                }
+                else if(keycode == VK_SHIFT)
+                {
+                    break;
                 }
                 else
                 {
-                    add_character(&global_file, &global_cursor, keycode);
+                    if(!is_shift & keycode >= 65 && keycode <= 90) keycode += 32;
+                    add_character(&global_state, (keycode));
                 }
                 win32_clear_backbuffer(&global_backbuffer);
-                win32_draw_file_buffer(&global_backbuffer, &global_file, &global_cursor);
-                win32_draw_cursor(&global_backbuffer, &global_cursor);
-                win32_draw_bitmap(&global_backbuffer, test_bitmap, -46, -89);
+
+                Backbuffer backbuffer = {0};
+                backbuffer.width = global_backbuffer.width;
+                backbuffer.height = global_backbuffer.height;
+                backbuffer.bytes_per_pixel = global_backbuffer.bytes_per_pixel;
+                backbuffer.memory = global_backbuffer.memory;
+                draw_editor(&backbuffer, &global_state);
+
                 win32_update_backbuffer(&global_backbuffer, device_context, width, height);
             }
         }break;
@@ -403,30 +221,6 @@ wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_sh
     window_class.hInstance = instance;
     window_class.lpszClassName = "tomi_window_class";
     
-    // NOTE(tomi): Create bitmap test
-    test_bitmap.width = 200;
-    test_bitmap.height = 200;
-    test_bitmap.bytes_per_pixel = 4;
-    test_bitmap.pitch = test_bitmap.width * test_bitmap.bytes_per_pixel;
-    test_bitmap.memory = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
-                                   test_bitmap.pitch*test_bitmap.height);
-        
-    // NOTE(tomi): Set the bitmap to red
-    for(int y = 0; y < test_bitmap.height; ++y)
-    {
-        for(int x = 0; x < test_bitmap.width; ++x)
-        {
-            if(x % 5 || y % 5)
-            {
-                ((u32 *)test_bitmap.memory)[y*test_bitmap.width+x] = 0xFFAAAAAA;
-            }
-            else
-            {
-                ((u32 *)test_bitmap.memory)[y*test_bitmap.width+x] = 0xFFFF0000;
-            }
-        }
-    }
-
     if(RegisterClassEx(&window_class))
     {
         HWND window = CreateWindowEx(0, window_class.lpszClassName,
@@ -439,7 +233,7 @@ wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_sh
         {
             HDC device_context = GetDC(window);
             // TODO(tomi): Increase speed of font loading
-            win32_load_complete_font(device_context);
+            win32_load_complete_font(device_context, &global_state);
             
             // TODO(tomi): Study best way of creating a message loop
             // for a text editor
