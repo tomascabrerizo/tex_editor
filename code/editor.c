@@ -10,7 +10,7 @@ move_cursor_left(Editor_State *state)
     
     Cursor *cursor = &state->cursor;
     char c = state->file.memory[cursor->index];
-    int cursor_width = state->letters[c].width;
+    int cursor_width = state->font[c].width;
     cursor->pos_x -= cursor_width; 
     cursor->index--;
 }
@@ -22,7 +22,7 @@ move_cursor_right(Editor_State *state)
     
     Cursor *cursor = &state->cursor;
     char c = state->file.memory[cursor->index+1];
-    int cursor_width = state->letters[c].width;
+    int cursor_width = state->font[c].width;
     cursor->pos_x += cursor_width; 
     cursor->index++;
 }
@@ -58,7 +58,7 @@ add_character(Editor_State *state, char character)
     }
     else
     {
-        cursor->pos_x += state->letters[character].width;
+        cursor->pos_x += state->font[character].width;
     }
 }
 
@@ -81,7 +81,7 @@ remove_character(Editor_State *state)
         }
         else
         {
-            cursor->pos_x -= state->letters[*des_buffer].width;
+            cursor->pos_x -= state->font[*des_buffer].width;
         }
 
         if(count > 0) memmove(des_buffer, src_buffer, count);
@@ -180,7 +180,7 @@ draw_rect(Backbuffer *buffer, int x, int y, int width, int height, u32 color)
 }
 
 internal void
-draw_file_buffer(Backbuffer *buffer, Bitmap *letters, File *file, Cursor* cursor)
+draw_file_buffer(Backbuffer *buffer, Bitmap *font, File *file, Cursor* cursor)
 {
     int height = 0;
     int total_w = 0;
@@ -195,8 +195,8 @@ draw_file_buffer(Backbuffer *buffer, Bitmap *letters, File *file, Cursor* cursor
         else
         {
             printf("%c, ", c);
-            draw_bitmap(buffer, letters[c], total_w, height);
-            total_w += letters[c].width;
+            draw_bitmap(buffer, font[c], total_w, height);
+            total_w += font[c].width;
         }
 
     }
@@ -214,6 +214,6 @@ void init_editor(Editor_State *state)
 
 void draw_editor(Backbuffer *buffer, Editor_State *state)
 {
-    draw_file_buffer(buffer, state->letters, &state->file, &state->cursor);
+    draw_file_buffer(buffer, state->font, &state->file, &state->cursor);
     draw_cursor(buffer, &state->cursor);
 }

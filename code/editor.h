@@ -46,8 +46,15 @@ typedef struct
 
 typedef struct
 {
+    int number;
+    // TODO(tomi): Dinamyc chunk of bytes
+} Line;
+
+typedef struct
+{
     int number_of_lines;
     int line_width[256];
+    // TODO(tomi): Dinamyc chunk of Lines 
     char memory[FILE_SIZE];
 } File;
 
@@ -66,7 +73,7 @@ typedef struct
 {
     File file;
     Cursor cursor;
-    Bitmap letters[256];
+    Bitmap font[256];
 
 } Editor_State;
 

@@ -96,7 +96,7 @@ internal void win32_load_complete_font(HDC device_context, Editor_State *state)
 {
     for(int i = 0; i < 127; ++i)
     {
-        state->letters[i] = win32_create_letter_bitmap(device_context, &((char)i));
+        state->font[i] = win32_create_letter_bitmap(device_context, &((char)i));
     }
 }
 
@@ -211,8 +211,88 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
     return result;
 }
 
+typedef struct
+{
+    int capacity;
+    int size;
+    u8 *memory;
+    int memory_offset;
+} D_Array;
+
+#define PUSH_LINE(array, line) \
+do \
+{ \
+    push_struct(array, line, sizeof(Line)); \
+} \
+while(false)\
+
+#define PUSH_BYTE(array, byte) \
+do \
+{ \
+    push_struct(array, byte, sizeof(u8)); \
+} \
+while(false)\
+
+internal void
+push_struct(D_Array *array, void* data, int size_of_data_in_bytes)
+{
+    // TODO(tomi): Maybe we do want to crash HERE!!! 
+    if(array && data)
+    {
+        if(array->size == 0)
+        {
+            size_t memory_size = 5;
+            size_t memory_size_in_bytes = (memory_size*size_of_data_in_bytes);
+            array->memory = (u8 *)malloc(memory_size_in_bytes);
+            array->size = memory_size;
+            array->capacity = 0;
+            array->memory_offset = 0;
+        }
+        else if(array->capacity >= array->size)
+        {
+            size_t memory_size = array->size*2;
+            size_t memory_size_in_bytes = (memory_size*size_of_data_in_bytes);
+            array->memory = (u8 *)realloc((u8 *)array->memory, memory_size_in_bytes);
+            array->size = memory_size;
+        }
+        
+        void *dest = array->memory + array->memory_offset;
+        memcpy(dest, data, size_of_data_in_bytes);
+        array->memory_offset += size_of_data_in_bytes;
+        ++array->capacity;
+     }
+}
+
+// NOTE(tomi): Simple test entry point
+int main(int argc, char** argv)
+{
+    // NOTE(tomi): Dynamic array testing 
+    D_Array line_array;
+    Line line0 = { 1 };
+    PUSH_LINE(&line_array, &line0);
+    Line line1 = { 2 };
+    PUSH_LINE(&line_array, &line1);
+    Line line2 = { 3 };
+    PUSH_LINE(&line_array, &line2);
+    Line line3 = { 4 };
+    PUSH_LINE(&line_array, &line3);
+    Line line4 = { 5 };
+    PUSH_LINE(&line_array, &line4);
+    Line line5 = { 6 };
+    PUSH_LINE(&line_array, &line5);
+    
+    for(int i = 0; i < line_array.capacity; ++i)
+    {
+        Line *line = (Line *)line_array.memory + i;
+        printf("Line number: %d!\n", line->number);
+    }
+
+    system("pause");
+    return 0;
+}
+
 int WINAPI 
-wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_show)
+wWinMain_(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_show)
 {
     WNDCLASSEXA window_class = {0};
     window_class.cbSize = sizeof(WNDCLASSEXA);
