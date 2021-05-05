@@ -77,5 +77,35 @@ typedef struct
 
 } Editor_State;
 
+// NOTE(tomi): Dynamics array
+
+typedef struct
+{
+    int capacity;
+    int size;
+    u8 *memory;
+    int memory_offset;
+} D_Array;
+
+#define PUSH_LINE(array, line) \
+do \
+{ \
+    push_struct(array, line, sizeof(Line)); \
+} \
+while(false)\
+
+#define PUSH_U8(array, byte) \
+do \
+{ \
+    push_struct(array, byte, sizeof(u8)); \
+} \
+while(false)\
+
+#define PUSH_U32(array, value) \
+do \
+{ \
+    push_struct(array, value, sizeof(u32)); \
+} \
+while(false)\
 
 #endif //EDITOR_H

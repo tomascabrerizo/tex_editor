@@ -211,58 +211,6 @@ win32_window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
     return result;
 }
 
-typedef struct
-{
-    int capacity;
-    int size;
-    u8 *memory;
-    int memory_offset;
-} D_Array;
-
-#define PUSH_LINE(array, line) \
-do \
-{ \
-    push_struct(array, line, sizeof(Line)); \
-} \
-while(false)\
-
-#define PUSH_BYTE(array, byte) \
-do \
-{ \
-    push_struct(array, byte, sizeof(u8)); \
-} \
-while(false)\
-
-internal void
-push_struct(D_Array *array, void* data, int size_of_data_in_bytes)
-{
-    // TODO(tomi): Maybe we do want to crash HERE!!! 
-    if(array && data)
-    {
-        if(array->size == 0)
-        {
-            size_t memory_size = 5;
-            size_t memory_size_in_bytes = (memory_size*size_of_data_in_bytes);
-            array->memory = (u8 *)malloc(memory_size_in_bytes);
-            array->size = memory_size;
-            array->capacity = 0;
-            array->memory_offset = 0;
-        }
-        else if(array->capacity >= array->size)
-        {
-            size_t memory_size = array->size*2;
-            size_t memory_size_in_bytes = (memory_size*size_of_data_in_bytes);
-            array->memory = (u8 *)realloc((u8 *)array->memory, memory_size_in_bytes);
-            array->size = memory_size;
-        }
-        
-        void *dest = array->memory + array->memory_offset;
-        memcpy(dest, data, size_of_data_in_bytes);
-        array->memory_offset += size_of_data_in_bytes;
-        ++array->capacity;
-     }
-}
-
 // NOTE(tomi): Simple test entry point
 int main(int argc, char** argv)
 {

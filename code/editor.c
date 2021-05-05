@@ -1,7 +1,38 @@
 #include "editor.h"
+#include <stdlib.h>
 
 // TODO(tomi): Do something with this global
 global_varible Editor_State global_state;
+
+internal void
+push_struct(D_Array *array, void* data, int size_of_data_in_bytes)
+{
+    // TODO(tomi): Maybe we do want to crash HERE!!! 
+    if(array && data)
+    {
+        if(array->size == 0)
+        {
+            size_t memory_size = 5;
+            size_t memory_size_in_bytes = (memory_size*size_of_data_in_bytes);
+            array->memory = (u8 *)malloc(memory_size_in_bytes);
+            array->size = memory_size;
+            array->capacity = 0;
+            array->memory_offset = 0;
+        }
+        else if(array->capacity >= array->size)
+        {
+            size_t memory_size = array->size*2;
+            size_t memory_size_in_bytes = (memory_size*size_of_data_in_bytes);
+            array->memory = (u8 *)realloc((u8 *)array->memory, memory_size_in_bytes);
+            array->size = memory_size;
+        }
+        
+        void *dest = array->memory + array->memory_offset;
+        memcpy(dest, data, size_of_data_in_bytes);
+        array->memory_offset += size_of_data_in_bytes;
+        ++array->capacity;
+     }
+}
 
 internal void
 move_cursor_left(Editor_State *state)
